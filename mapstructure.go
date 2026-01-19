@@ -405,6 +405,7 @@ func NewDecoder(config *DecoderConfig) (*Decoder, error) {
 	}
 
 	if config.DecodeHook != nil {
+		// ensure that we use reflection at most once for the decode hook
 		hook := typedDecodeHook(config.DecodeHook)
 		switch hook.(type) {
 		case DecodeHookFuncType, DecodeHookFuncKind, DecodeHookFuncValue:

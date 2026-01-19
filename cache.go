@@ -48,7 +48,7 @@ type structField struct {
 
 type tags []string
 
-func (t tags) containsAfterTag(s string) bool {
+func (t tags) hasOption(s string) bool {
 	for i := 1; i < len(t); i++ {
 		if t[i] == s {
 			return true
@@ -57,8 +57,8 @@ func (t tags) containsAfterTag(s string) bool {
 	return false
 }
 func (t tags) omitEmpty() bool {
-	return t.containsAfterTag("omitempty")
+	return t.hasOption("omitempty")
 }
 func (t tags) squash() bool {
-	return t.containsAfterTag("squash")
+	return t.hasOption("squash")
 }

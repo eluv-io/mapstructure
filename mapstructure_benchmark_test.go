@@ -283,3 +283,36 @@ func Benchmark_DecodeTagged(b *testing.B) {
 		Decode(input, &result)
 	}
 }
+
+type PersonJs struct {
+	Name   string            `json:"name"`
+	Age    int               `json:"age"`
+	Emails []string          `json:"emails"`
+	Extra  map[string]string `json:"extra"`
+}
+
+// Benchmark_DecodeJs uses json tag
+// * without structTypeCache
+// Benchmark_DecodeJs-8   	  283374	      4123 ns/op
+// * with structTypeCache
+// Benchmark_DecodeJs-8   	  334621	      3142 ns/op
+func Benchmark_DecodeJs(b *testing.B) {
+	input := map[string]interface{}{
+		"name":   "Mitchell",
+		"age":    91,
+		"emails": []string{"one", "two", "three"},
+		"extra": map[string]string{
+			"twitter": "mitchellh",
+		},
+	}
+
+	result := &PersonJs{}
+	dec, err := NewDecoder(&DecoderConfig{TagName: "json", Result: result})
+	if err != nil {
+		b.Fatalf("unexpected error %v", err)
+	}
+
+	for i := 0; i < b.N; i++ {
+		_ = dec.Decode(input)
+	}
+}

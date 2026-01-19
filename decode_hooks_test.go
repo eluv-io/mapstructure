@@ -608,10 +608,18 @@ func TestTypedDecodeHook(t *testing.T) {
 }
 
 // BenchmarkDecodeHook
-// * without verification in NewDecoder
+// 'hook conversion' in NewDecoder means when a conversion of the hook function to
+//
+//	one of the 3 hook signatures is made in NewDecoder (to avoid reflection in each call)
+//
+// The benchmark run with a 'regular' hook (signature func(reflect.Type, reflect.Type, interface{}) (interface{}, error)
+// or a 'custom' hook where the same function is type-casted to some custom type,
+// i.e. a type unknown to this library.
+//
+// * without 'hook conversion' in NewDecoder
 // BenchmarkDecodeHook/regular-8    324003    3382 ns/op    1416 B/op    27 allocs/op
 // BenchmarkDecodeHook/custom-8     161388    6224 ns/op    1416 B/op    27 allocs/op
-// * with verification in NewDecoder
+// * with 'hook conversion' in NewDecoder
 // BenchmarkDecodeHook/regular-8    323794    3447 ns/op    1416 B/op    27 allocs/op
 // BenchmarkDecodeHook/custom-8     334044    3377 ns/op    1416 B/op    27 allocs/op
 func BenchmarkDecodeHook(b *testing.B) {
@@ -621,14 +629,14 @@ func BenchmarkDecodeHook(b *testing.B) {
 	type innerType struct {
 		Type string `json:"type"`
 	}
-	type upper struct {
+	type outer struct {
 		innerColor
 		innerType
 		Name string `json:"name"`
 		Size int    `json:"size"`
 	}
 
-	in0 := &upper{
+	in0 := &outer{
 		innerColor: innerColor{Color: "red"},
 		innerType:  innerType{Type: "car"},
 		Name:       "x",
@@ -649,7 +657,7 @@ func BenchmarkDecodeHook(b *testing.B) {
 	}
 	type CustomHookFuncType func(reflect.Type, reflect.Type, interface{}) (interface{}, error)
 
-	target := &upper{}
+	target := &outer{}
 	decoder, err := NewDecoder(&DecoderConfig{
 		TagName:    "json",
 		Result:     target,
@@ -667,7 +675,7 @@ func BenchmarkDecodeHook(b *testing.B) {
 		b.Fatalf("expected %#v, got %#v", in0, target)
 	}
 
-	target = &upper{}
+	target = &outer{}
 
 	type testCase struct {
 		name string
