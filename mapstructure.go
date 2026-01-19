@@ -917,10 +917,13 @@ func (d *Decoder) decodeMapFromMap(name string, dataVal reflect.Value, val refle
 
 func (d *Decoder) decodeMapFromStruct(name string, dataVal reflect.Value, val reflect.Value, valMap reflect.Value) error {
 	typ := dataVal.Type()
+	cachedType := getStructType(typ, d.config.TagName)
+
 	for i := 0; i < typ.NumField(); i++ {
 		// Get the StructField first since this is a cheap operation. If the
 		// field is unexported, then ignore it.
-		f := typ.Field(i)
+		cf := cachedType.fields[i]
+		f := cf.field
 		if f.PkgPath != "" {
 			continue
 		}
@@ -932,7 +935,7 @@ func (d *Decoder) decodeMapFromStruct(name string, dataVal reflect.Value, val re
 			return fmt.Errorf("cannot assign type '%s' to map value field of type '%s'", v.Type(), valMap.Type().Elem())
 		}
 
-		tagValue := f.Tag.Get(d.config.TagName)
+		tagValue := cf.tags[0]
 		keyName := f.Name
 
 		if tagValue == "" && d.config.IgnoreUntaggedFields {
@@ -945,17 +948,17 @@ func (d *Decoder) decodeMapFromStruct(name string, dataVal reflect.Value, val re
 		v = dereferencePtrToStructIfNeeded(v, d.config.TagName)
 
 		// Determine the name of the key in the map
-		if index := strings.Index(tagValue, ","); index != -1 {
-			if tagValue[:index] == "-" {
+		if len(cf.tags) > 1 {
+			if tagValue == "-" {
 				continue
 			}
 			// If "omitempty" is specified in the tag, it ignores empty values.
-			if strings.Index(tagValue[index+1:], "omitempty") != -1 && isEmptyValue(v) {
+			if cf.tags.omitEmpty() && isEmptyValue(v) {
 				continue
 			}
 
 			// If "squash" is specified in the tag, we squash the field down.
-			squash = squash || strings.Index(tagValue[index+1:], "squash") != -1
+			squash = squash || cf.tags.squash()
 			if squash {
 				// When squashing, the embedded type can be a pointer to a struct.
 				if v.Kind() == reflect.Ptr && v.Elem().Kind() == reflect.Struct {
@@ -967,7 +970,7 @@ func (d *Decoder) decodeMapFromStruct(name string, dataVal reflect.Value, val re
 					return fmt.Errorf("cannot squash non-struct type '%s'", v.Type())
 				}
 			}
-			if keyNameTagValue := tagValue[:index]; keyNameTagValue != "" {
+			if keyNameTagValue := tagValue; keyNameTagValue != "" {
 				keyName = keyNameTagValue
 			}
 		} else if len(tagValue) > 0 {
@@ -1303,6 +1306,7 @@ func (d *Decoder) decodeStructFromMap(name string, dataVal, val reflect.Value) e
 	type field struct {
 		field reflect.StructField
 		val   reflect.Value
+		tags  []string
 	}
 
 	// remainField is set to a valid field set with the "remain" tag if
@@ -1315,9 +1319,10 @@ func (d *Decoder) decodeStructFromMap(name string, dataVal, val reflect.Value) e
 		structs = structs[1:]
 
 		structType := structVal.Type()
+		cachedType := getStructType(structType, d.config.TagName)
 
 		for i := 0; i < structType.NumField(); i++ {
-			fieldType := structType.Field(i)
+			structField := cachedType.fields[i]
 			fieldVal := structVal.Field(i)
 			if fieldVal.Kind() == reflect.Ptr && fieldVal.Elem().Kind() == reflect.Struct {
 				// Handle embedded struct pointers as embedded structs.
@@ -1325,11 +1330,11 @@ func (d *Decoder) decodeStructFromMap(name string, dataVal, val reflect.Value) e
 			}
 
 			// If "squash" is specified in the tag, we squash the field down.
-			squash := d.config.Squash && fieldVal.Kind() == reflect.Struct && fieldType.Anonymous
+			squash := d.config.Squash && fieldVal.Kind() == reflect.Struct && structField.field.Anonymous
 			remain := false
 
 			// We always parse the tags cause we're looking for other tags too
-			tagParts := strings.Split(fieldType.Tag.Get(d.config.TagName), ",")
+			tagParts := structField.tags
 			for _, tag := range tagParts[1:] {
 				if tag == "squash" {
 					squash = true
@@ -1345,7 +1350,7 @@ func (d *Decoder) decodeStructFromMap(name string, dataVal, val reflect.Value) e
 			if squash {
 				if fieldVal.Kind() != reflect.Struct {
 					errors = appendErrors(errors,
-						fmt.Errorf("%s: unsupported type for squash: %s", fieldType.Name, fieldVal.Kind()))
+						fmt.Errorf("%s: unsupported type for squash: %s", structField.field.Name, fieldVal.Kind()))
 				} else {
 					structs = append(structs, fieldVal)
 				}
@@ -1354,21 +1359,21 @@ func (d *Decoder) decodeStructFromMap(name string, dataVal, val reflect.Value) e
 
 			// Build our field
 			if remain {
-				remainField = &field{fieldType, fieldVal}
+				remainField = &field{structField.field, fieldVal, tagParts}
 			} else {
 				// Normal struct field, store it away
-				fields = append(fields, field{fieldType, fieldVal})
+				fields = append(fields, field{structField.field, fieldVal, tagParts})
 			}
 		}
 	}
 
 	// for fieldType, field := range fields {
 	for _, f := range fields {
-		field, fieldValue := f.field, f.val
+		field, fieldValue, tags := f.field, f.val, f.tags
 		fieldName := field.Name
 
 		tagValue := field.Tag.Get(d.config.TagName)
-		tagValue = strings.SplitN(tagValue, ",", 2)[0]
+		tagValue = tags[0]
 		if tagValue != "" {
 			fieldName = tagValue
 		}
@@ -1527,8 +1532,9 @@ func getKind(val reflect.Value) reflect.Kind {
 }
 
 func isStructTypeConvertibleToMap(typ reflect.Type, checkMapstructureTags bool, tagName string) bool {
+	cachedType := getStructType(typ, tagName)
 	for i := 0; i < typ.NumField(); i++ {
-		f := typ.Field(i)
+		f := cachedType.fields[i].field
 		if f.PkgPath == "" && !checkMapstructureTags { // check for unexported fields
 			return true
 		}
