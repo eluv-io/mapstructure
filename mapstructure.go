@@ -9,84 +9,84 @@
 //
 // The simplest function to start with is Decode.
 //
-// Field Tags
+// # Field Tags
 //
 // When decoding to a struct, mapstructure will use the field name by
 // default to perform the mapping. For example, if a struct has a field
 // "Username" then mapstructure will look for a key in the source value
 // of "username" (case insensitive).
 //
-//     type User struct {
-//         Username string
-//     }
+//	type User struct {
+//	    Username string
+//	}
 //
 // You can change the behavior of mapstructure by using struct tags.
 // The default struct tag that mapstructure looks for is "mapstructure"
 // but you can customize it using DecoderConfig.
 //
-// Renaming Fields
+// # Renaming Fields
 //
 // To rename the key that mapstructure looks for, use the "mapstructure"
 // tag and set a value directly. For example, to change the "username" example
 // above to "user":
 //
-//     type User struct {
-//         Username string `mapstructure:"user"`
-//     }
+//	type User struct {
+//	    Username string `mapstructure:"user"`
+//	}
 //
-// Embedded Structs and Squashing
+// # Embedded Structs and Squashing
 //
 // Embedded structs are treated as if they're another field with that name.
 // By default, the two structs below are equivalent when decoding with
 // mapstructure:
 //
-//     type Person struct {
-//         Name string
-//     }
+//	type Person struct {
+//	    Name string
+//	}
 //
-//     type Friend struct {
-//         Person
-//     }
+//	type Friend struct {
+//	    Person
+//	}
 //
-//     type Friend struct {
-//         Person Person
-//     }
+//	type Friend struct {
+//	    Person Person
+//	}
 //
 // This would require an input that looks like below:
 //
-//     map[string]interface{}{
-//         "person": map[string]interface{}{"name": "alice"},
-//     }
+//	map[string]interface{}{
+//	    "person": map[string]interface{}{"name": "alice"},
+//	}
 //
 // If your "person" value is NOT nested, then you can append ",squash" to
 // your tag value and mapstructure will treat it as if the embedded struct
 // were part of the struct directly. Example:
 //
-//     type Friend struct {
-//         Person `mapstructure:",squash"`
-//     }
+//	type Friend struct {
+//	    Person `mapstructure:",squash"`
+//	}
 //
 // Now the following input would be accepted:
 //
-//     map[string]interface{}{
-//         "name": "alice",
-//     }
+//	map[string]interface{}{
+//	    "name": "alice",
+//	}
 //
 // When decoding from a struct to a map, the squash tag squashes the struct
 // fields into a single map. Using the example structs from above:
 //
-//     Friend{Person: Person{Name: "alice"}}
+//	Friend{Person: Person{Name: "alice"}}
 //
 // Will be decoded into a map:
 //
-//     map[string]interface{}{
-//         "name": "alice",
-//     }
+//	map[string]interface{}{
+//	    "name": "alice",
+//	}
 //
 // DecoderConfig has a field that changes the behavior of mapstructure
 // to always squash embedded structs.
 //
-// Remainder Values
+// # Remainder Values
 //
 // If there are any unmapped keys in the source value, mapstructure by
 // default will silently ignore them. You can error by setting ErrorUnused
@@ -98,20 +98,20 @@
 // probably be a "map[string]interface{}" or "map[interface{}]interface{}".
 // See example below:
 //
-//     type Friend struct {
-//         Name  string
-//         Other map[string]interface{} `mapstructure:",remain"`
-//     }
+//	type Friend struct {
+//	    Name  string
+//	    Other map[string]interface{} `mapstructure:",remain"`
+//	}
 //
 // Given the input below, Other would be populated with the other
 // values that weren't used (everything but "name"):
 //
-//     map[string]interface{}{
-//         "name":    "bob",
-//         "address": "123 Maple St.",
-//     }
+//	map[string]interface{}{
+//	    "name":    "bob",
+//	    "address": "123 Maple St.",
+//	}
 //
-// Omit Empty Values
+// # Omit Empty Values
 //
 // When decoding from a struct to any other value, you may use the
 // ",omitempty" suffix on your tag to omit that value if it equates to
@@ -122,37 +122,37 @@
 // field value is zero and a numeric type, the field is empty, and it won't
 // be encoded into the destination type.
 //
-//     type Source struct {
-//         Age int `mapstructure:",omitempty"`
-//     }
+//	type Source struct {
+//	    Age int `mapstructure:",omitempty"`
+//	}
 //
-// Unexported fields
+// # Unexported fields
 //
 // Since unexported (private) struct fields cannot be set outside the package
 // where they are defined, the decoder will simply skip them.
 //
 // For this output type definition:
 //
-//     type Exported struct {
-//         private string // this unexported field will be skipped
-//         Public string
-//     }
+//	type Exported struct {
+//	    private string // this unexported field will be skipped
+//	    Public string
+//	}
 //
 // Using this map as input:
 //
-//     map[string]interface{}{
-//         "private": "I will be ignored",
-//         "Public":  "I made it through!",
-//     }
+//	map[string]interface{}{
+//	    "private": "I will be ignored",
+//	    "Public":  "I made it through!",
+//	}
 //
 // The following struct will be decoded:
 //
-//     type Exported struct {
-//         private: "" // field is left with an empty string (zero value)
-//         Public: "I made it through!"
-//     }
+//	type Exported struct {
+//	    private: "" // field is left with an empty string (zero value)
+//	    Public: "I made it through!"
+//	}
 //
-// Other Configuration
+// # Other Configuration
 //
 // mapstructure is highly configurable. See the DecoderConfig struct
 // for other features and options that are supported.
@@ -402,6 +402,17 @@ func NewDecoder(config *DecoderConfig) (*Decoder, error) {
 
 	if config.MatchName == nil {
 		config.MatchName = strings.EqualFold
+	}
+
+	if config.DecodeHook != nil {
+		// ensure that we use reflection at most once for the decode hook
+		hook := typedDecodeHook(config.DecodeHook)
+		switch hook.(type) {
+		case DecodeHookFuncType, DecodeHookFuncKind, DecodeHookFuncValue:
+		default:
+			return nil, errors.New("invalid decode hook signature")
+		}
+		config.DecodeHook = hook
 	}
 
 	result := &Decoder{
@@ -907,10 +918,13 @@ func (d *Decoder) decodeMapFromMap(name string, dataVal reflect.Value, val refle
 
 func (d *Decoder) decodeMapFromStruct(name string, dataVal reflect.Value, val reflect.Value, valMap reflect.Value) error {
 	typ := dataVal.Type()
+	cachedType := getStructType(typ, d.config.TagName)
+
 	for i := 0; i < typ.NumField(); i++ {
 		// Get the StructField first since this is a cheap operation. If the
 		// field is unexported, then ignore it.
-		f := typ.Field(i)
+		cf := cachedType.fields[i]
+		f := cf.field
 		if f.PkgPath != "" {
 			continue
 		}
@@ -922,7 +936,7 @@ func (d *Decoder) decodeMapFromStruct(name string, dataVal reflect.Value, val re
 			return fmt.Errorf("cannot assign type '%s' to map value field of type '%s'", v.Type(), valMap.Type().Elem())
 		}
 
-		tagValue := f.Tag.Get(d.config.TagName)
+		tagValue := cf.tags[0]
 		keyName := f.Name
 
 		if tagValue == "" && d.config.IgnoreUntaggedFields {
@@ -935,17 +949,17 @@ func (d *Decoder) decodeMapFromStruct(name string, dataVal reflect.Value, val re
 		v = dereferencePtrToStructIfNeeded(v, d.config.TagName)
 
 		// Determine the name of the key in the map
-		if index := strings.Index(tagValue, ","); index != -1 {
-			if tagValue[:index] == "-" {
+		if len(cf.tags) > 1 {
+			if tagValue == "-" {
 				continue
 			}
 			// If "omitempty" is specified in the tag, it ignores empty values.
-			if strings.Index(tagValue[index+1:], "omitempty") != -1 && isEmptyValue(v) {
+			if cf.tags.omitEmpty() && isEmptyValue(v) {
 				continue
 			}
 
 			// If "squash" is specified in the tag, we squash the field down.
-			squash = squash || strings.Index(tagValue[index+1:], "squash") != -1
+			squash = squash || cf.tags.squash()
 			if squash {
 				// When squashing, the embedded type can be a pointer to a struct.
 				if v.Kind() == reflect.Ptr && v.Elem().Kind() == reflect.Struct {
@@ -957,7 +971,7 @@ func (d *Decoder) decodeMapFromStruct(name string, dataVal reflect.Value, val re
 					return fmt.Errorf("cannot squash non-struct type '%s'", v.Type())
 				}
 			}
-			if keyNameTagValue := tagValue[:index]; keyNameTagValue != "" {
+			if keyNameTagValue := tagValue; keyNameTagValue != "" {
 				keyName = keyNameTagValue
 			}
 		} else if len(tagValue) > 0 {
@@ -1293,6 +1307,7 @@ func (d *Decoder) decodeStructFromMap(name string, dataVal, val reflect.Value) e
 	type field struct {
 		field reflect.StructField
 		val   reflect.Value
+		tags  []string
 	}
 
 	// remainField is set to a valid field set with the "remain" tag if
@@ -1305,9 +1320,10 @@ func (d *Decoder) decodeStructFromMap(name string, dataVal, val reflect.Value) e
 		structs = structs[1:]
 
 		structType := structVal.Type()
+		cachedType := getStructType(structType, d.config.TagName)
 
 		for i := 0; i < structType.NumField(); i++ {
-			fieldType := structType.Field(i)
+			structField := cachedType.fields[i]
 			fieldVal := structVal.Field(i)
 			if fieldVal.Kind() == reflect.Ptr && fieldVal.Elem().Kind() == reflect.Struct {
 				// Handle embedded struct pointers as embedded structs.
@@ -1315,11 +1331,11 @@ func (d *Decoder) decodeStructFromMap(name string, dataVal, val reflect.Value) e
 			}
 
 			// If "squash" is specified in the tag, we squash the field down.
-			squash := d.config.Squash && fieldVal.Kind() == reflect.Struct && fieldType.Anonymous
+			squash := d.config.Squash && fieldVal.Kind() == reflect.Struct && structField.field.Anonymous
 			remain := false
 
 			// We always parse the tags cause we're looking for other tags too
-			tagParts := strings.Split(fieldType.Tag.Get(d.config.TagName), ",")
+			tagParts := structField.tags
 			for _, tag := range tagParts[1:] {
 				if tag == "squash" {
 					squash = true
@@ -1335,7 +1351,7 @@ func (d *Decoder) decodeStructFromMap(name string, dataVal, val reflect.Value) e
 			if squash {
 				if fieldVal.Kind() != reflect.Struct {
 					errors = appendErrors(errors,
-						fmt.Errorf("%s: unsupported type for squash: %s", fieldType.Name, fieldVal.Kind()))
+						fmt.Errorf("%s: unsupported type for squash: %s", structField.field.Name, fieldVal.Kind()))
 				} else {
 					structs = append(structs, fieldVal)
 				}
@@ -1344,21 +1360,21 @@ func (d *Decoder) decodeStructFromMap(name string, dataVal, val reflect.Value) e
 
 			// Build our field
 			if remain {
-				remainField = &field{fieldType, fieldVal}
+				remainField = &field{structField.field, fieldVal, tagParts}
 			} else {
 				// Normal struct field, store it away
-				fields = append(fields, field{fieldType, fieldVal})
+				fields = append(fields, field{structField.field, fieldVal, tagParts})
 			}
 		}
 	}
 
 	// for fieldType, field := range fields {
 	for _, f := range fields {
-		field, fieldValue := f.field, f.val
+		field, fieldValue, tags := f.field, f.val, f.tags
 		fieldName := field.Name
 
 		tagValue := field.Tag.Get(d.config.TagName)
-		tagValue = strings.SplitN(tagValue, ",", 2)[0]
+		tagValue = tags[0]
 		if tagValue != "" {
 			fieldName = tagValue
 		}
@@ -1517,8 +1533,9 @@ func getKind(val reflect.Value) reflect.Kind {
 }
 
 func isStructTypeConvertibleToMap(typ reflect.Type, checkMapstructureTags bool, tagName string) bool {
+	cachedType := getStructType(typ, tagName)
 	for i := 0; i < typ.NumField(); i++ {
-		f := typ.Field(i)
+		f := cachedType.fields[i].field
 		if f.PkgPath == "" && !checkMapstructureTags { // check for unexported fields
 			return true
 		}

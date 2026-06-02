@@ -569,3 +569,148 @@ func TestTextUnmarshallerHookFunc(t *testing.T) {
 		}
 	}
 }
+
+func TestTypedDecodeHook(t *testing.T) {
+	type testCase struct {
+		name     string
+		h        interface{}
+		wantFail bool
+	}
+
+	typeFn := func(reflect.Type, reflect.Type, interface{}) (interface{}, error) { return nil, nil }
+	valFn := func(from reflect.Value, to reflect.Value) (interface{}, error) { return nil, nil }
+	kindFn := func(reflect.Kind, reflect.Kind, interface{}) (interface{}, error) { return nil, nil }
+
+	type CustomHookFuncType func(reflect.Type, reflect.Type, interface{}) (interface{}, error)
+	type CustomHookFuncKind func(reflect.Kind, reflect.Kind, interface{}) (interface{}, error)
+	type CustomHookFuncValue func(from reflect.Value, to reflect.Value) (interface{}, error)
+
+	for _, tc := range []*testCase{
+		{name: "func-type-fn", h: typeFn},
+		{name: "hook-type-fn", h: DecodeHookFuncType(typeFn)},
+		{name: "custom-type-fn", h: CustomHookFuncType(typeFn)},
+		{name: "func-val-fn", h: valFn},
+		{name: "hook-val-fn", h: DecodeHookFuncValue(valFn)},
+		{name: "custom-val-fn", h: CustomHookFuncValue(valFn)},
+		{name: "func-kind-fn", h: kindFn},
+		{name: "hook-kind-fn", h: DecodeHookFuncKind(kindFn)},
+		{name: "custom-kind-fn", h: CustomHookFuncKind(kindFn)},
+		{name: "not-a-hook", h: func(string) (interface{}, error) { return nil, nil }, wantFail: true},
+	} {
+		f := typedDecodeHook(tc.h)
+		switch {
+		case f != nil && tc.wantFail:
+			t.Fatalf("%s: expected failure", tc.name)
+		case f == nil && !tc.wantFail:
+			t.Fatalf("%s: unexpected failure", tc.name)
+		}
+	}
+}
+
+// BenchmarkDecodeHook
+// 'hook conversion' in NewDecoder means when a conversion of the hook function to
+//
+//	one of the 3 hook signatures is made in NewDecoder (to avoid reflection in each call)
+//
+// The benchmark run with a 'regular' hook (signature func(reflect.Type, reflect.Type, interface{}) (interface{}, error)
+// or a 'custom' hook where the same function is type-casted to some custom type,
+// i.e. a type unknown to this library.
+//
+// * without 'hook conversion' in NewDecoder
+// BenchmarkDecodeHook/regular-8    324003    3382 ns/op    1416 B/op    27 allocs/op
+// BenchmarkDecodeHook/custom-8     161388    6224 ns/op    1416 B/op    27 allocs/op
+// * with 'hook conversion' in NewDecoder
+// BenchmarkDecodeHook/regular-8    323794    3447 ns/op    1416 B/op    27 allocs/op
+// BenchmarkDecodeHook/custom-8     334044    3377 ns/op    1416 B/op    27 allocs/op
+func BenchmarkDecodeHook(b *testing.B) {
+	type innerColor struct {
+		Color string `json:"color"`
+	}
+	type innerType struct {
+		Type string `json:"type"`
+	}
+	type outer struct {
+		innerColor
+		innerType
+		Name string `json:"name"`
+		Size int    `json:"size"`
+	}
+
+	in0 := &outer{
+		innerColor: innerColor{Color: "red"},
+		innerType:  innerType{Type: "car"},
+		Name:       "x",
+		Size:       2,
+	}
+	bb, err := json.Marshal(in0)
+	if err != nil {
+		b.Fatal(err)
+	}
+	var msi interface{}
+	err = json.Unmarshal(bb, &msi)
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	decodeHook := func(f reflect.Type, t reflect.Type, data interface{}) (interface{}, error) {
+		return data, nil
+	}
+	type CustomHookFuncType func(reflect.Type, reflect.Type, interface{}) (interface{}, error)
+
+	target := &outer{}
+	decoder, err := NewDecoder(&DecoderConfig{
+		TagName:    "json",
+		Result:     target,
+		Squash:     true,
+		DecodeHook: decodeHook,
+	})
+	if err != nil {
+		b.Fatal(err)
+	}
+	err = decoder.Decode(msi)
+	if err != nil {
+		b.Fatal(err)
+	}
+	if !reflect.DeepEqual(in0, target) {
+		b.Fatalf("expected %#v, got %#v", in0, target)
+	}
+
+	target = &outer{}
+
+	type testCase struct {
+		name string
+		cfg  *DecoderConfig
+	}
+
+	for _, tc := range []*testCase{
+		{name: "regular", cfg: &DecoderConfig{
+			TagName:    "json",
+			Result:     target,
+			Squash:     true,
+			DecodeHook: decodeHook,
+		}},
+		{name: "custom", cfg: &DecoderConfig{
+			TagName:    "json",
+			Result:     target,
+			Squash:     true,
+			DecodeHook: CustomHookFuncType(decodeHook),
+		}},
+	} {
+		b.Run(tc.name, func(b *testing.B) {
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				decoder, err := NewDecoder(tc.cfg)
+				if err != nil {
+					b.Fatal(err)
+				}
+
+				err = decoder.Decode(msi)
+				if err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+
+}

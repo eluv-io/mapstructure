@@ -14,6 +14,26 @@ import (
 // typedDecodeHook takes a raw DecodeHookFunc (an interface{}) and turns
 // it into the proper DecodeHookFunc type, such as DecodeHookFuncType.
 func typedDecodeHook(h DecodeHookFunc) DecodeHookFunc {
+
+	// for performances, first try to cast from most common types
+
+	switch fn := h.(type) {
+	case func(reflect.Type, reflect.Type, interface{}) (interface{}, error):
+		return DecodeHookFuncType(fn)
+	case DecodeHookFuncType:
+		return fn
+	case func(from reflect.Value, to reflect.Value) (interface{}, error):
+		return DecodeHookFuncValue(fn)
+	case DecodeHookFuncValue:
+		return fn
+	case func(reflect.Kind, reflect.Kind, interface{}) (interface{}, error):
+		return DecodeHookFuncKind(fn)
+	case DecodeHookFuncKind:
+		return fn
+	}
+
+	// fall back to reflect to convert custom types
+
 	// Create variables here so we can reference them with the reflect pkg
 	var f1 DecodeHookFuncType
 	var f2 DecodeHookFuncKind
