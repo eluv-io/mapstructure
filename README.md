@@ -1,4 +1,4 @@
-# mapstructure [![Godoc](https://godoc.org/github.com/mitchellh/mapstructure?status.svg)](https://godoc.org/github.com/mitchellh/mapstructure)
+# mapstructure [![Godoc](https://godoc.org/github.com/eluv-io/mapstructure?status.svg)](https://godoc.org/github.com/eluv-io/mapstructure)
 
 mapstructure is a Go library for decoding generic map values to structures
 and vice versa, while providing helpful error handling.
@@ -9,17 +9,22 @@ until you read a part of it. You can therefore read a `map[string]interface{}`
 and use this library to decode it into the proper underlying native Go
 structure.
 
+## Fork 
+
+The original repository of this library has been archived as [planned by its author](https://gist.github.com/mitchellh/90029601268e59a29e64e55bab1c5bdc)
+Therefore, the library was repackaged in this repository to include few fixes.
+
 ## Installation
 
 Standard `go get`:
 
 ```
-$ go get github.com/mitchellh/mapstructure
+$ go get github.com/eluv-io/mapstructure
 ```
 
 ## Usage & Example
 
-For usage and examples see the [Godoc](http://godoc.org/github.com/mitchellh/mapstructure).
+For usage and examples see the [Godoc](http://godoc.org/github.com/eluv-io/mapstructure).
 
 The `Decode` function has examples associated with it there.
 
